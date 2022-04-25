@@ -1,6 +1,7 @@
 import 'package:ble/connected.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:flutter_blue/flutter_blue.dart';
+import 'package:loader_overlay/loader_overlay.dart';
 
 void main() {
   runApp(const MyApp());
@@ -30,48 +31,83 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  List<DiscoveredDevice> result = [];
-  late Stream<ConnectionStateUpdate> temp;
+  List<BluetoothDevice> result = [];
   String status = "IDK";
+  bool connecting = false;
   Future<void> getDevices() async {
-    final flutterReactiveBle = FlutterReactiveBle();
+    final flutterBlue = FlutterBlue.instance;
 
     result.clear();
-    setState(() {});
-    flutterReactiveBle.scanForDevices(
-        withServices: [],
-        scanMode: ScanMode.balanced,
-        requireLocationServicesEnabled: true).listen((device) {
-      bool flag = true;
-      for (var de in result) {
-        if (de.id == device.id) {
-          flag = false;
-          break;
-        }
-      }
-      if (flag) {
+    flutterBlue.connectedDevices
+        .asStream()
+        .listen((List<BluetoothDevice> devices) {
+      for (BluetoothDevice device in devices) {
         result.add(device);
+        print("HEy" + device.toString());
+      }
+    });
+    setState(() {});
+    flutterBlue.startScan(
+      timeout: Duration(seconds: 2),
+    );
+
+// Listen to scan results
+    var subscription = flutterBlue.scanResults.listen((results) {
+      for (ScanResult r in results) {
+        result.add(r.device);
         setState(() {});
       }
-    }, onError: (err) {
-      print("YO" + err);
     });
+
+// Stop scanning
+    flutterBlue.stopScan();
   }
 
-  Future<void> connect(DiscoveredDevice device) async {
-    FlutterReactiveBle().connectToDevice(id: device.id).listen((update) {
+  Future<void> connect(BluetoothDevice device) async {
+    try {
       setState(() {
-        status = update.connectionState.toString();
-        if (update.connectionState == DeviceConnectionState.connected) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: ((context) => Connected(device: device)),
-            ),
-          );
-        }
+        connecting = true;
       });
-    });
+      await device.connect();
+      setState(() {
+        connecting = false;
+        result.clear();
+      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: ((context) {
+            return Connected(device: device);
+          }),
+        ),
+      );
+    } catch (e) {
+      if (e.toString() !=
+          "PlatformException(already_connected, connection with device already exists, null, null)") {
+        print("HHHH" + e.toString());
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Couldnt Connect"),
+          ),
+        );
+        setState(() {
+          connecting = false;
+        });
+      } else {
+        setState(() {
+          connecting = false;
+          result.clear();
+        });
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: ((context) {
+              return Connected(device: device);
+            }),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -80,19 +116,21 @@ class _MyHomePageState extends State<MyHomePage> {
       appBar: AppBar(
         title: Text(status),
       ),
-      body: ListView.builder(
-        itemCount: result.length,
-        itemBuilder: (context, index) {
-          return Card(
-            child: ListTile(
-              onTap: () async {
-                await connect(result[index]);
+      body: connecting
+          ? const Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              itemCount: result.length,
+              itemBuilder: (context, index) {
+                return Card(
+                  child: ListTile(
+                    onTap: () async {
+                      await connect(result[index]);
+                    },
+                    title: Text(result[index].name),
+                  ),
+                );
               },
-              title: Text(result[index].name),
             ),
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           await getDevices();

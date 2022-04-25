@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:flutter_blue/flutter_blue.dart';
 
 class Connected extends StatefulWidget {
-  DiscoveredDevice device;
+  BluetoothDevice device;
   Connected({required this.device});
 
   @override
@@ -10,9 +10,21 @@ class Connected extends StatefulWidget {
 }
 
 class _ConnectedState extends State<Connected> {
-  Future<void> services(device) async {
-    final result = await FlutterReactiveBle().discoverServices(device.id);
-    print(result);
+  List<BluetoothService> serv = [];
+  Future<void> services(BluetoothDevice device) async {
+    final flutterBlue = FlutterBlue.instance;
+    List<BluetoothService> services = await device.discoverServices();
+    services.forEach((service) {
+      setState(() {
+        serv.add(service);
+      });
+      // print(service.uuid.toString());
+    });
+  }
+
+  Future<void> disconnect(BluetoothDevice device) async {
+    await device.disconnect();
+    Navigator.pop(context);
   }
 
   @override
@@ -22,9 +34,15 @@ class _ConnectedState extends State<Connected> {
         title: Text("Connected Screen"),
       ),
       body: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          const SizedBox(
+            width: double.infinity,
+          ),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () async {
+              await disconnect(widget.device);
+            },
             child: Text("Disconnect"),
           ),
           ElevatedButton(
@@ -33,6 +51,22 @@ class _ConnectedState extends State<Connected> {
             },
             child: Text("Services"),
           ),
+          const SizedBox(
+            height: 50,
+          ),
+          Text("Services"),
+          Flexible(
+            child: ListView.builder(
+              itemCount: serv.length,
+              itemBuilder: (context, index) {
+                return Card(
+                  child: ListTile(
+                    title: Text(serv[index].uuid.toString()),
+                  ),
+                );
+              },
+            ),
+          )
         ],
       ),
     );
